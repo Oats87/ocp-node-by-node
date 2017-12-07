@@ -1,0 +1,70 @@
+- hosts: nodes
+  vars:
+  serial: 1
+  gather_facts: false
+  tasks:
+  - name: Load lib_openshift modules
+    include_role:
+      name: lib_openshift
+
+  - name: Get list of masters from hosts file
+    set_fact:
+      masters: "{{ groups['masters'] }}"
+
+  - name: Mark node unschedulable
+    oc_adm_manage_node:
+      node: "{{ inventory_hostname | lower }}"
+      schedulable: False
+    delegate_to: "{{ masters.0 }}"
+    retries: 10
+    delay: 5
+    when: inventory_hostname not in masters
+    register: node_unschedulable
+    until: node_unschedulable|succeeded
+
+  - name: Drain Node
+    command: >
+      oc adm drain {{ inventory_hostname | lower }} --config=/etc/origin/master/admin.kubeconfig --force --delete-local-data --ignore-daemonsets
+    delegate_to: "{{ masters.0 }}"
+    register: l_upgrade_nodes_drain_result
+    when: inventory_hostname not in masters
+    until: not l_upgrade_nodes_drain_result | failed
+    retries: 64
+    delay: 60
+
+  # Add your task that you would like to perform on the node here.
+  # For example, this could be an update and reboot
+
+  - name: Restart AOS Node Service
+    service:
+      name: atomic-openshift-node
+      state: restarted
+    when: inventory_hostname not in masters
+
+  - name: Wait for AOS Service to stabilize and report NotReady
+    pause:
+      seconds: 5
+    when: inventory_hostname not in masters
+
+  - name: Wait for node to be ready
+    oc_obj:
+      state: list
+      kind: node
+      name: "{{ inventory_hostname | lower }}"
+    register: node_output
+    delegate_to: "{{ masters.0 }}"
+    when: inventory_hostname not in masters and node_unschedulable|changed
+    until: node_output.results.returncode == 0 and node_output.results.results[0].status.conditions | selectattr('type', 'match', '^Ready$') | map(attribute='status') | join | bool == True
+    retries: 64
+    delay: 5
+
+  - name: Set node schedulability
+    oc_adm_manage_node:
+      node: "{{ inventory_hostname | lower }}"
+      schedulable: True
+    delegate_to: "{{ masters.0 }}"
+    when: inventory_hostname not in masters and node_unschedulable|changed
+    retries: 10
+    delay: 5
+    register: node_schedulable
+    until: node_schedulable|succeeded
