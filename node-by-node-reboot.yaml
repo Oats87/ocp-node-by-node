@@ -34,6 +34,7 @@
 
   # Add your task that you would like to perform on the node here.
   # For example, this could be an update and reboot
+  # PLEASE REMEMBER TO ADD `when: inventory_hostname not in masters` TO ALL TASKS YOU ADD!
 
   - name: Reboot node
     shell: sleep 2 && /sbin/shutdown -r now "Rebooting from Ansible"

@@ -15,3 +15,11 @@ I have tested this on both OCP 3.5 and 3.6 clusters. I do not know the status of
 Simply call ansible-playbook with the playbook you'd like to use while specifying your OpenShift hosts file.
 
 I've provided three files in this repository, one that iteratively reboots all of the nodes, one that restarts the atomic-openshift-node service on all of the nodes, and one that does nothing to the nodes (to be customized by the user). Please note that these playbooks will not perform any actions against the masters in your hosts file as to prevent interruptions. It will automatically choose the first listed master to execute API calls on.
+
+## Modifying/Adding Tasks
+
+PLEASE make sure to add the "when" condition to each task you add if you don't want that task to be executed on the master! The appropriate when statement base is
+
+```
+    when: inventory_hostname not in masters
+```
